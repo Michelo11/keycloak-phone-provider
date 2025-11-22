@@ -1,6 +1,5 @@
 package cc.coopersoft.keycloak.phone.authentication.forms;
 
-import okhttp3.HttpUrl;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.authentication.FormAction;
@@ -12,12 +11,14 @@ import org.keycloak.models.*;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.services.validation.Validation;
 
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.keycloak.provider.ProviderConfigProperty.MULTIVALUED_STRING_TYPE;
-import static org.keycloak.provider.ProviderConfigProperty.STRING_TYPE;
 
 public class RegistrationRedirectParametersReader implements FormActionFactory, FormAction {
 
@@ -118,12 +119,28 @@ public class RegistrationRedirectParametersReader implements FormActionFactory, 
       return;
     }
 
-    HttpUrl url = HttpUrl.parse(redirectUri);
-    if (url == null) {
-      logger.error("redirectUri is null");
+    URI uri;
+    try {
+      uri = new URI(redirectUri);
+    } catch (Exception e) {
+      logger.error("Invalid redirectUri: " + redirectUri, e);
       return;
     }
-    //url.queryParameterNames().forEach(s -> logger.info("redirect param name ->" + s));
+    
+    String query = uri.getQuery();
+    if (query == null || query.isEmpty()) {
+      logger.info("No query parameters in redirectUri");
+      return;
+    }
+
+    Map<String, List<String>> queryParams = new HashMap<>();
+    for (String param : query.split("&")) {
+      String[] pair = param.split("=", 2);
+      String key = URLDecoder.decode(pair[0], StandardCharsets.UTF_8);
+      String value = pair.length > 1 ? URLDecoder.decode(pair[1], StandardCharsets.UTF_8) : "";
+      queryParams.computeIfAbsent(key, k -> new ArrayList<>()).add(value);
+    }
+
     UserModel user = context.getUser();
     AuthenticatorConfigModel authenticatorConfig = context.getAuthenticatorConfig();
 
@@ -154,10 +171,10 @@ public class RegistrationRedirectParametersReader implements FormActionFactory, 
       return;
     }
 
-    url.queryParameterNames()
+    queryParams.keySet()
         .stream()
         .filter(finalParamNames::contains)
-        .forEach(v -> user.setAttribute(v, url.queryParameterValues(v)));
+        .forEach(v -> user.setAttribute(v, queryParams.get(v)));
 
   }
 

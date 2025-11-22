@@ -8,8 +8,7 @@ import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.exception.PhoneNumberInvalidException;
 import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresentation;
 import cc.coopersoft.keycloak.phone.providers.spi.PhoneVerificationCodeProvider;
-import cc.coopersoft.keycloak.phone.providers.spi.PhoneProvider;
-import com.google.i18n.phonenumbers.NumberParseException;
+import jakarta.ws.rs.core.MultivaluedMap;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.authentication.FormAction;
@@ -20,18 +19,18 @@ import org.keycloak.credential.CredentialProvider;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.forms.login.LoginFormsProvider;
-import org.keycloak.models.*;
 import org.keycloak.models.AuthenticationExecutionModel.Requirement;
+import org.keycloak.models.*;
 import org.keycloak.models.utils.FormMessage;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.provider.ProviderConfigurationBuilder;
 import org.keycloak.services.validation.Validation;
 
-import javax.ws.rs.core.MultivaluedMap;
 import java.util.ArrayList;
 import java.util.List;
 
-import static cc.coopersoft.keycloak.phone.authentication.forms.SupportPhonePages.*;
+import static cc.coopersoft.keycloak.phone.authentication.forms.SupportPhonePages.FIELD_PHONE_NUMBER;
+import static cc.coopersoft.keycloak.phone.authentication.forms.SupportPhonePages.FIELD_VERIFICATION_CODE;
 import static org.keycloak.provider.ProviderConfigProperty.BOOLEAN_TYPE;
 
 public class RegistrationPhoneVerificationCode implements FormAction, FormActionFactory {
@@ -91,7 +90,7 @@ public class RegistrationPhoneVerificationCode implements FormAction, FormAction
   }
 
   private final static Requirement[] REQUIREMENT_CHOICES = {
-      Requirement.REQUIRED, Requirement.DISABLED};
+      Requirement.REQUIRED, Requirement.CONDITIONAL, Requirement.DISABLED};
 
   @Override
   public Requirement[] getRequirementChoices() {
@@ -138,9 +137,8 @@ public class RegistrationPhoneVerificationCode implements FormAction, FormAction
     String phoneNumber = formData.getFirst(FIELD_PHONE_NUMBER);
 
     if (Validation.isBlank(phoneNumber)){
-      context.error(Errors.INVALID_REGISTRATION);
-      errors.add(new FormMessage(FIELD_PHONE_NUMBER, SupportPhonePages.Errors.MISSING));
-      context.validationError(formData, errors);
+      logger.info("No phone number provided, skipping phone verification");
+      context.success();
       return;
     }
 
@@ -179,6 +177,11 @@ public class RegistrationPhoneVerificationCode implements FormAction, FormAction
 
     String phoneNumber = formData.getFirst(FIELD_PHONE_NUMBER);
 
+    if (Validation.isBlank(phoneNumber)) {
+      logger.info(String.format("No phone number provided for user %s, skipping phone verification processing", user.getId()));
+      return;
+    }
+
     try {
       phoneNumber = Utils.canonicalizePhoneNumber(context.getSession(),phoneNumber);
     } catch (PhoneNumberInvalidException e) {
@@ -203,7 +206,12 @@ public class RegistrationPhoneVerificationCode implements FormAction, FormAction
 
   @Override
   public void buildPage(FormContext context, LoginFormsProvider form) {
-    form.setAttribute("verifyPhone", true);
+    MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
+    String phoneNumber = formData.getFirst(FIELD_PHONE_NUMBER);
+    
+    if (!Validation.isBlank(phoneNumber)) {
+      form.setAttribute("verifyPhone", true);
+    }
   }
 
   @Override
@@ -213,7 +221,7 @@ public class RegistrationPhoneVerificationCode implements FormAction, FormAction
 
   @Override
   public boolean configuredFor(KeycloakSession session, RealmModel realm, UserModel user) {
-    return true;
+    return user != null && !Validation.isBlank(user.getFirstAttribute(FIELD_PHONE_NUMBER));
   }
 
   @Override

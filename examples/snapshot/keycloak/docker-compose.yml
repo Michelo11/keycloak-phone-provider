@@ -32,8 +32,8 @@ services:
       TWILIO_SEND_PHONE_NUMBER: "your send phone number"
 
 
-      KEYCLOAK_USER: admin
-      KEYCLOAK_PASSWORD: admin
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
       DB_VENDOR: mariadb
       DB_ADDR: database
       DB_DATABASE: keycloak
