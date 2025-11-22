@@ -211,6 +211,10 @@ public class RegistrationPhoneVerificationCode implements FormAction, FormAction
     
     if (!Validation.isBlank(phoneNumber)) {
       form.setAttribute("verifyPhone", true);
+      form.setAttribute("phoneNumberRequired", true);
+    } else {
+      form.setAttribute("phoneNumberRequired", false);
+      form.setAttribute("skipPhoneVerification", true);
     }
   }
 

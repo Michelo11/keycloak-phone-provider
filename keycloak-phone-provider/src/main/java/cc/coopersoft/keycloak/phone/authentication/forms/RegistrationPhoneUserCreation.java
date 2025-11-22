@@ -27,6 +27,7 @@ import org.keycloak.userprofile.ValidationException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static cc.coopersoft.keycloak.phone.authentication.forms.SupportPhonePages.FIELD_PHONE_NUMBER;
 import static org.keycloak.provider.ProviderConfigProperty.BOOLEAN_TYPE;
@@ -175,9 +176,11 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
 
   @Override
   public void buildPage(FormContext context, LoginFormsProvider form) {
+    boolean emailVisible = !isHideEmail(context);
+    
     form.setAttribute("phoneNumberRequired", true);
     
-    if (!isHideEmail(context)) {
+    if (emailVisible) {
       form.setAttribute("phoneNumberOptional", true);
     }
 
@@ -208,9 +211,16 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
 
     boolean success = true;
     List<FormMessage> errors = new ArrayList<>();
-    boolean hideEmail = isHideEmail(context);
     
-    if (!Validation.isBlank(phoneNumber)) {
+    boolean emailProvided = !Validation.isBlank(email);
+    boolean phoneProvided = !Validation.isBlank(phoneNumber);
+    
+    if (phoneNumber == null) {
+      formData.putSingle(FIELD_PHONE_NUMBER, "");
+      phoneNumber = "";
+    }
+    
+    if (phoneProvided) {
       try {
         phoneNumber = Utils.canonicalizePhoneNumber(session,phoneNumber);
         if (!Utils.isDuplicatePhoneAllowed(session) &&
@@ -226,14 +236,14 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
         context.validationError(formData, errors);
         success = false;
       }
-    } else if (hideEmail) {
+    } else if (!emailProvided) {
       errors.add(new FormMessage(FIELD_PHONE_NUMBER, SupportPhonePages.Errors.MISSING.message()));
       context.error(Errors.INVALID_REGISTRATION);
       context.validationError(formData, errors);
       success = false;
     }
 
-    if (!Validation.isBlank(phoneNumber)) {
+    if (phoneProvided) {
       context.getEvent().detail(FIELD_PHONE_NUMBER, phoneNumber);
       if (isPhoneNumberAsUsername(context)){
         context.getEvent().detail(Details.USERNAME, phoneNumber);
@@ -256,8 +266,8 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
       context.getEvent().detail(Details.LAST_NAME, lastName);
     }
 
-    if (!hideEmail){
-      email = profile.getAttributes().getFirst(UserModel.EMAIL);
+    email = profile.getAttributes().getFirst(UserModel.EMAIL);
+    if (!Validation.isBlank(email)){
       context.getEvent().detail(Details.EMAIL, email);
       if (context.getRealm().isRegistrationEmailAsUsername()){
         context.getEvent().detail(Details.USERNAME, email);
@@ -271,14 +281,23 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
         context.error(Errors.EMAIL_IN_USE);
       } else if (pve.hasError(Messages.MISSING_EMAIL, Messages.MISSING_USERNAME, Messages.INVALID_EMAIL)) {
         context.error(Errors.INVALID_REGISTRATION);
-        if (pve.hasError(Messages.MISSING_EMAIL) && Validation.isBlank(phoneNumber) && !hideEmail) {
+        if (pve.hasError(Messages.MISSING_EMAIL) && !phoneProvided) {
           errors.add(new FormMessage(FIELD_PHONE_NUMBER, SupportPhonePages.Errors.MISSING.message()));
         }
       } else if (pve.hasError(Messages.USERNAME_EXISTS)) {
         context.error(Errors.USERNAME_IN_USE);
       }
       success = false;
-      errors.addAll(Validation.getFormErrorsFromValidation(pve.getErrors()));
+      
+      List<FormMessage> profileErrors = Validation.getFormErrorsFromValidation(pve.getErrors());
+      
+      if (emailProvided) {
+        profileErrors = profileErrors.stream()
+            .filter(error -> !FIELD_PHONE_NUMBER.equals(error.getField()))
+            .collect(Collectors.toList());
+      }
+      
+      errors.addAll(profileErrors);
     }
 
     if (success) {
@@ -320,8 +339,8 @@ public class RegistrationPhoneUserCreation implements FormActionFactory, FormAct
       context.getEvent().detail(FIELD_PHONE_NUMBER, phoneNumber);
     }
 
-    if (!isHideEmail(context)){
-      context.getEvent().detail(Details.EMAIL,email);
+    if (!Validation.isBlank(email)){
+      context.getEvent().detail(Details.EMAIL, email);
     }
 
     UserProfileProvider profileProvider = session.getProvider(UserProfileProvider.class);
